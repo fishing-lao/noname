@@ -850,7 +850,7 @@ const skills = {
 			player.removeExtraEquip(skill);
 		},
 		filter(event, player) {
-			if (!event.reason) {
+			if (!event.reason || player.maxHp < 2) {
 				return false;
 			}
 			const reason = event.reason;
@@ -1213,7 +1213,7 @@ const skills = {
 					mark(dialog, storage, player) {
 						const str = get.translation(storage).split("、"),
 							sources = get.translation(player.getStorage("yj_yanyu_source")).split("、");
-						dialog.addText(`${str}花色的手牌遵循:基本牌:火杀,锦囊牌:火攻,装备牌:铁索连环且使用后${sources}摸一张牌`);
+						dialog.addText(`${str}花色的手牌遵循:基本牌:火【杀】,锦囊牌:火攻,装备牌:铁索连环且使用后${sources}摸一张牌`);
 					},
 				},
 				mod: {
@@ -1449,7 +1449,6 @@ const skills = {
 				return;
 			}
 			if (result.links[0] == "damage") {
-				game.log(player, "令", card, "对", target, "的伤害+1");
 				const id = target.playerid;
 				const map = trigger.customArgs;
 				map[id] ??= {};
@@ -2411,6 +2410,7 @@ const skills = {
 				i.popup(result.control);
 				list.push(result.control);
 			}
+			list.sort((a, b) => (a === "摸牌" ? -1 : 1));
 			const bool = list[0] != list[1];
 			for (const i of list) {
 				for (const current of targets) {
@@ -4114,9 +4114,6 @@ const skills = {
 	beiyu: {
 		audio: 2,
 		enable: "phaseUse",
-		filter(event, player) {
-			return player.countCards("h") < player.maxHp;
-		},
 		usable: 1,
 		manualConfirm: true,
 		async content(event, trigger, player) {
@@ -4154,7 +4151,7 @@ const skills = {
 				.forResult();
 			if (result?.links?.length) {
 				const [suit] = result.links,
-					cards = player.getCards("h", card => get.suit(card, player) == suit);
+					cards = player.getCards("h", card => get.suit(card, player) == suit).randomSort();
 				if (cards.length) {
 					game.log(player, "将", cards, "置于牌堆底");
 					await player.lose(cards, ui.cardPile);
@@ -4205,33 +4202,24 @@ const skills = {
 		filterTarget: lib.filter.notMe,
 		async content(event, trigger, player) {
 			const { target } = event;
-			await player.draw(2, "nodelay");
+			await player.draw({ num: 2, nodelay: true });
 			await target.draw(2);
-			const targets = [player, target].filter(current => current.countCards("h") > 1);
+			const targets = [player, target].filter(current => current.hasCards("h"));
 			if (targets.length) {
-				const next = player.chooseCardOL(targets, "h", true, 2, "齐眉：请展示两张手牌");
-				next._args.remove("glow_result");
-				const result = await next.forResult();
-				const videoId = lib.status.videoId++;
-				game.broadcastAll(
-					(targets, result, id, player) => {
-						const dialog = ui.create.dialog(get.translation(player) + "发动了【齐眉】");
-						dialog.videoId = id;
-						for (let i = 0; i < result.length; i++) {
-							dialog.add('<div class="text center">' + get.translation(targets[i]) + "展示</div>");
-							dialog.add(result[i].cards);
-						}
-					},
-					targets,
-					result,
-					videoId,
-					player
-				);
-				let cards = result.reduce((list, evt) => {
-					list.addArray(evt.cards);
-					return list;
-				}, []);
-				await player.showCards(cards).set("dialog", videoId).set("delay_time", 4).set("multipleShow", true);
+				const cards = [];
+				for(const current of targets) {
+					const result = await current
+						.chooseCard({
+							prompt: "齐眉：请展示至多三张手牌",
+							selectCard: [1, 3],
+							forced: true,
+						})
+						.forResult();
+					if (result?.cards?.length) {
+						cards.addArray(result.cards);
+						await current.showCards(result.cards);
+					}
+				}
 				const suits = cards.reduce((list, card) => list.add(get.suit(card)), []);
 				switch (suits.length) {
 					case 1:
@@ -4255,21 +4243,21 @@ const skills = {
 							if (current.isTurnedOver()) {
 								await current.turnOver(false);
 							}
+							await current.recover();
 						}
 						break;
 					case 3:
-						for (let i = 0; i < result.length; i++) {
-							const current = targets[i],
-								cards = result[i].cards.filter(card => {
+						for (const current of [player, target]) {
+							const cardx = cards.filter(card => {
 									return get.owner(card) === current && current.canRecast(card);
 								});
-							if (cards.length) {
-								await current.recast(cards);
+							if (cardx.length) {
+								await current.recast(cardx);
 							}
 						}
 						break;
 					case 4:
-						await player.draw("nodelay");
+						await player.draw({ num: 1, nodelay: true });
 						await target.draw();
 						break;
 				}
@@ -4326,7 +4314,7 @@ const skills = {
 				cards = [];
 			while (num <= 5) {
 				while (target.hasEmptySlot(num)) {
-					const card = get.cardPile2(card => {
+					const card = get.cardPile(card => {
 						return !cards.includes(card) && get.subtype(card) == "equip" + num && target.canUse(card, target);
 					}, "random");
 					if (card) {
@@ -4528,10 +4516,9 @@ const skills = {
 			player: "damageEnd",
 			source: "damageSource",
 		},
-		forced: true,
-		locked: false,
+		frequent: true,
 		async content(event, trigger, player) {
-			player.draw(2).gaintag = ["kangli"];
+			await player.draw({ num: 2, gaintag: ["kangli"] });
 			player.when({ source: "damageBegin1" }).step(async (event, trigger, player) => {
 				const cards = player.getCards("h", card => card.hasGaintag("kangli") && lib.filter.cardDiscardable(card, player, "kangli"));
 				if (cards.length) {
@@ -5223,7 +5210,7 @@ const skills = {
 		async cost(event, trigger, player) {
 			event.result = await player
 				.chooseButton({
-					createDialog: [`###${get.prompt(event.name)}###<div class="text center">将一张“刺”置入弃牌堆，并将${get.translation(trigger.cards.filterInD("d"))}置入“刺”</div>`, player.getExpansions("duwang")],
+					createDialog: [`###${get.prompt(event.skill)}###<div class="text center">将一张“刺”置入弃牌堆，并将${get.translation(trigger.cards.filterInD("d"))}置入“刺”</div>`, player.getExpansions("duwang")],
 					filterButton(button) {
 						return button.link.name !== "sha";
 					},
@@ -6112,7 +6099,7 @@ const skills = {
 							[list, "vcard"],
 							list => {
 								const list2 = list.map(i => get.translation(i[2].slice(6)));
-								return `你使用${list2[0]}牌时无次数限制；使用或打出${list2[1]}时，摸一张牌；<br>成为${list2[2]}牌目标后可弃一张牌无效；结束阶段获得一张${list2[3]}牌`;
+								return `你使用${list2[0]}牌时无次数限制；使用或打出${list2[1]}时，摸一张牌；<br>成为${list2[2]}牌目标后可弃一张牌无效；结束阶段从牌堆获得一张${list2[3]}牌`;
 							},
 						],
 					],
@@ -6158,7 +6145,7 @@ const skills = {
 		intro: {
 			content(storage, player) {
 				const list = lib.skill.lkbushi.getBushi(player).map(i => get.translation(i));
-				return `①你使用${list[0]}牌无次数限制。②当你使用或打出${list[1]}牌后，你摸一张牌。③当你成为${list[2]}牌的目标后，你可以弃置一张牌，令此牌对你无效。④结束阶段开始时，你从牌堆或弃牌堆获得一张${list[3]}牌。⑤准备阶段开始时，你可调整此技能中四种花色的对应顺序。`;
+				return `①你使用${list[0]}牌无次数限制。②当你使用或打出${list[1]}牌后，你摸一张牌。③当你成为${list[2]}牌的目标后，你可以弃置一张牌，令此牌对你无效。④结束阶段开始时，你从牌堆获得一张${list[3]}牌。⑤准备阶段开始时，你可调整此技能中四种花色的对应顺序。`;
 			},
 		},
 		group: ["lkbushi_unlimit", "lkbushi_draw", "lkbushi_defend", "lkbushi_gain"],
@@ -6268,7 +6255,7 @@ const skills = {
 			}
 			return range < 3 && event.num > 1;
 		},
-		async content(event, trigger) {
+		async content(event, trigger, player) {
 			if (event.triggername === "damageBegin1") {
 				trigger.num++;
 			} else {
@@ -6945,7 +6932,13 @@ const skills = {
 			},
 		},
 		ai: {
-			order: 1,
+			order(item, player) {
+				player ??= get.player();
+				if (player?.countCards("h") == 1) {
+					return 114514;
+				}
+				return 1;
+			},
 			threaten: 1.14514,
 			unequip_ai: true,
 			skillTagFilter(player, tag, arg) {
@@ -6962,7 +6955,13 @@ const skills = {
 				charlotte: true,
 				prompt2: "将手牌摸至体力上限，然后若此牌未造成过伤害，你失去1点体力",
 				check(event, player) {
-					var num = player.maxHp - player.countCards("h");
+					const bool = game.hasPlayer2(current => {
+						return current.hasHistory("damage", evt => evt.card == event.card);
+					}, true)
+					if (bool) {
+						return true;
+					}
+					const num = player.maxHp - player.countCards("h");
 					return (num >= 3 && player.hp >= 2) || (num >= 2 && player.hp >= 3);
 				},
 				filter(event, player) {

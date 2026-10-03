@@ -1,4 +1,11 @@
 const characters = {
+	clan_lutan: {
+		sex: "female",
+		group: "wu",
+		hp: 3,
+		skills: ["clankuanqu", "clananliu", "clanzelie"],
+		clans: ["吴郡陆氏"],
+	},
 	clan_luyusheng: {
 		sex: "female",
 		group: "wu",
@@ -116,7 +123,7 @@ const characters = {
 		sex: "female",
 		group: "qun",
 		hp: 4,
-		skills: ["clanzhuiji", "clanyunying", "clandaojie"],
+		skills: ["clandunji", "clanyunying", "clandaojie"],
 		clans: ["颍川荀氏"],
 	},
 	clan_zhugeguo: {

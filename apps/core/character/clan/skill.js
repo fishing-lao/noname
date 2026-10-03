@@ -2,6 +2,143 @@ import { lib, game, ui, get, ai, _status } from "noname";
 
 /** @type { importCharacterConfig["skill"] } */
 const skills = {
+	//族陆昙
+	clankuanqu: {
+		audio: 2,
+		enable: "phaseUse",
+		usable: 1,
+		locked: false,
+		mod: {
+			cardEnabled(card, player) {
+				if (card?.storage?.clankuanqu) {
+					return true;
+				}
+			},
+		},
+		filter(event, player) {
+			return player.countCards("hes") > 1;
+		},
+		chooseButton: {
+			dialog(event, player) {
+				return ui.create.dialog("款曲", [["sha", "tao"], "vcard"], "hidden");
+			},
+			filter(button, player) {
+				return lib.filter.cardEnabled(
+					get.autoViewAs(
+						{
+							name: button.link[2],
+							storage: { clankuanqu: true },
+						},
+						"unsure"
+					),
+					player,
+					"forceEnable"
+				);
+			},
+			check(button) {
+				const card = get.autoViewAs(
+						{
+							name: button.link[2],
+							storage: { clankuanqu: true },
+						},
+						"unsure"
+					),
+					player = get.player();
+				return Math.max.apply(
+					Math,
+					game
+						.filterPlayer(target => {
+							return lib.filter.targetEnabled2(card, player, target) && lib.filter.targetInRange(card, player, target);
+						})
+						.map(target => {
+							return get.effect(target, card, player, player);
+						})
+				);
+			},
+			backup(links, player) {
+				return {
+					viewAs: {
+						name: links[0][2],
+						storage: { clankuanqu: true },
+					},
+					filterCard: true,
+					selectCard: 2,
+					position: "hes",
+					popname: true,
+					filterTarget(card, player, target) {
+						if (!card) {
+							card = get.card();
+						}
+						return lib.filter.targetEnabled2(card, player, target) && lib.filter.targetInRange(card, player, target);
+					},
+					selectTarget: 1,
+					ignoreMod: true,
+					filterOk: () => true,
+					log: false,
+					async precontent(event, trigger, player) {
+						player.logSkill("clankuanqu");
+						const target = event.result.targets[0];
+						player
+							.when({ global: "useCardAfter" })
+							.filter(evt => evt.getParent() == event.getParent())
+							.step(async (event, trigger, player) => {
+								const pos = player == target ? "e" : "he";
+								if (target?.isIn() && [player, target].some(current => current.hp == current.countCards("h")) && target.hasCards(pos)) {
+									await player.gainPlayerCard({ forced: true, target, position: "he" });
+								}
+							});
+					},
+				};
+			},
+			prompt(links, player) {
+				return "将两张牌当做【" + get.translation(links[0][2]) + "】使用";
+			},
+		},
+		ai: {
+			order: 5,
+			result: {
+				player: 1,
+			},
+		},
+	},
+	clananliu: {
+		audio: 2,
+		trigger: { player: "damageEnd" },
+		filter(event, player) {
+			return game.hasPlayer(current => current.hasCards("h"));
+		},
+		async cost(event, trigger, player) {
+			const num = Math.min(
+				5,
+				game.countPlayer(current => current.countCards("h") == player.countCards("h"))
+			);
+			event.result = await player
+				.chooseTarget({
+					prompt: get.prompt(event.skill),
+					prompt2: `令至多${num}名角色各弃置一张牌`,
+					filterTarget(card, player, target) {
+						return target.hasCards("he");
+					},
+					selectTarget: [1, num],
+					ai(target) {
+						const player = get.player();
+						return get.effect(target, { name: "guohe_copy", position: "he" }, target, player);
+					},
+				})
+				.forResult();
+		},
+		async content(event, trigger, player) {
+			const targets = event.targets.sortBySeat();
+			await game.doAsyncInOrder(targets, async target => {
+				await target.chooseToDiscard({ forced: true, position: "he" });
+			});
+			const num = Math.min(
+				5,
+				game.countPlayer(current => current.countCards("h") == player.countCards("h"))
+			);
+			await player.draw({ num });
+		},
+	},
 	//族诸葛果
 	clanfuyao: {
 		audio: 2,
@@ -148,7 +285,7 @@ const skills = {
 			return event.targets.reduce((sum, target) => sum + get.effect(target, event.card, player, player), 0) > 0;
 		},
 		usable: 1,
-		async content(event, trigger) {
+		async content(event, trigger, player) {
 			trigger.effectCount++;
 			game.log(trigger.card, "额外结算一次");
 		},
@@ -275,7 +412,7 @@ const skills = {
 		},
 	},
 	//族荀灌
-	clanzhuiji: {
+	clandunji: {
 		audio: 2,
 		trigger: { player: "useCardAfter" },
 		filter(event, player) {
@@ -320,12 +457,12 @@ const skills = {
 		audio: 2,
 		trigger: { global: "phaseJieshuBegin" },
 		filter(event, player) {
-			const target = player.storage.clanzhuiji;
+			const target = player.storage.clandunji;
 			return get.itemtype(target) === "player" && (game.hasGlobalHistory("changeHp", evt => evt.player === target && evt.changedHp < 0) || target.hasHistory("lose", evt => evt.hs?.length > 0));
 		},
 		forced: true,
 		async content(event, trigger, player) {
-			const target = player.storage.clanzhuiji;
+			const target = player.storage.clandunji;
 			if (game.hasGlobalHistory("changeHp", evt => evt.player === target && evt.changedHp < 0)) {
 				const cards = player.getCards("h", card => get.color(card, player) === "black");
 				if (cards.length > 0 && cards.every(card => game.checkMod(card, player, "unchanged", "cardEnabled2", player))) {
@@ -1024,7 +1161,6 @@ const skills = {
 		check(card) {
 			return 7 - get.value(card);
 		},
-		position: "he",
 		log: false,
 		async precontent(event, trigger, player) {
 			const name = event.name.slice(4);
@@ -1055,7 +1191,7 @@ const skills = {
 				if (card.storage?.clanfenjian) {
 					return true;
 				}
-			}
+			},
 		},
 		group: ["clanfenjian_effect"],
 		subSkill: {
@@ -1493,15 +1629,33 @@ const skills = {
 			const names = cards.map(card => get.name(card)).unique();
 			player.addTempSkill(`${event.name}_used`, "roundStart");
 			player.markAuto(`${event.name}_used`, names);
+			//通过重铸额外获得的基本牌牌名是根据你重铸时的手牌决定的
+			const hs = player.getCards("h");
+			//重铸前基本牌牌名
+			const hsnames = hs
+				.filter(card => get.type(card) == "basic")
+				.map(card => card.name)
+				.unique();
+			//如果重铸时手牌中没有桃，那么额外摸的基本牌一定是桃。
+			const bool = hs.some(card => card.name == "tao");
 			await player.recast(cards);
+			//重铸后的基本牌名
+			const namex = player
+				.getCards("h")
+				.filter(card => get.type(card) == "basic")
+				.map(card => card.name)
+				.unique();
+			//那么额外摸的基本牌就是你重铸的牌名
+			const cardx = get.cardPile(card => get.type(card) == "basic" && names.includes(get.name(card)), void 0, "random");
 			if (player.hasHistory("useCard", evt => names.includes(get.name(evt.card)))) {
-				const list = player
-					.getCards("h")
-					.map(card => get.name(card))
-					.unique();
-				const card = get.cardPile(card => get.type(card) == "basic" && !list.includes(get.name(card)), void 0, "random");
+				const list = hs.map(card => get.name(card)).unique();
+				const tao = get.cardPile(card => card.name == "tao", void 0, "random");
+				const card = !bool && tao ? tao : get.cardPile(card => get.type(card) == "basic" && !list.includes(get.name(card)), void 0, "random");
 				if (card) {
-					await player.gain(card, "gain2");
+					await player.gain({ cards: [card], animate: "gain2" });
+				} else if (hsnames.length > 3 && namex.length < 4 && cardx) {
+					//重铸时手牌中有所有基本牌牌名且重铸后手牌中有缺少的基本牌牌名
+					await player.gain({ cards: [cardx], animate: "gain2" });
 				} else {
 					player.chat("碰！");
 				}
@@ -2253,7 +2407,7 @@ const skills = {
 	},
 	clanzelie: {
 		audio: 2,
-		audioname: ["clan_lujing", "clan_luyusheng"],
+		audioname: ["clan_lujing", "clan_luyusheng", "clan_lutan"],
 		trigger: { global: ["loseAfter", "equipAfter", "addJudgeAfter", "gainAfter", "loseAsyncAfter", "addToExpansionAfter"] },
 		getIndex(event, player) {
 			return game
@@ -3235,6 +3389,7 @@ const skills = {
 	clanqieyi: {
 		audio: 2,
 		trigger: { player: ["phaseUseBegin", "useCardAfter"] },
+		frequent: true,
 		filter(event, player) {
 			if (event.name == "useCard") {
 				if (!player.hasSkill("clanqieyi_effect") || !lib.suits.includes(get.suit(event.card))) {
@@ -3248,8 +3403,11 @@ const skills = {
 		async cost(event, trigger, player) {
 			if (trigger.name == "phaseUse") {
 				event.result = await player
-					.chooseBool(get.prompt2(event.skill))
-					.set("ai", () => true)
+					.chooseBool({
+						prompt: get.prompt2(event.skill),
+						ai: () => true,
+						frequentSkill: event.skill,
+					})
 					.forResult();
 			} else {
 				event.result = { bool: true };
@@ -4387,16 +4545,6 @@ const skills = {
 					cards.addArray(evt.cards.filter(card => get.position(card, true) == "d"));
 				});
 				event.set("clanshengmo_cards", cards);
-				/*
-				const numbers = cards.map(card => get.number(card, false)).unique();
-				const [min, max] = [Math.min(...numbers), Math.max(...numbers)];
-				event.set(
-					"clanshengmo_cards",
-					cards.filter(card => {
-						const num = get.number(card, false);
-						return num > min && num < max;
-					})
-				);*/
 			}
 		},
 		async content(event, trigger, player) {
@@ -4416,6 +4564,7 @@ const skills = {
 				.forResult();
 			if (links?.length) {
 				await player.gain(links, "gain2");
+				player.addSkill("clanshengmo_num");
 				player.markAuto("clanshengmo_num", links.map(card => get.number(card, false)).toUniqued());
 				const numbers = cards.map(card => get.number(card, false)).unique();
 				const [min, max] = [Math.min(...numbers), Math.max(...numbers)],
@@ -4475,6 +4624,24 @@ const skills = {
 			content: "已以此法使用过$",
 		},
 		subSkill: {
+			num: {
+				charlotte: true,
+				onremove: true,
+				intro: {
+					markcount(storage, player) {
+						const numbers = Array.from({ length: 13 }, (_, i) => i + 1).removeArray(storage);
+						return numbers.length;
+					},
+					content(storage, player) {
+						const numbers = Array.from({ length: 13 }, (_, i) => i + 1).removeArray(storage);
+						if (numbers.length) {
+							return `剩余点数：${numbers.join("、")}`;
+						} else {
+							return "无剩余点数";
+						}
+					},
+				},
+			},
 			backup: {
 				async precontent(event, trigger, player) {
 					event.result.card.storage.clanshengmo = true;
@@ -4923,7 +5090,7 @@ const skills = {
 			const str = get.translation(player);
 			const result = await target
 				.chooseControl()
-				.set("choiceList", [str + "下次对你使用【杀】后，其视为对你使用任意普通锦囊牌", str + "下次对你使用任意普通锦囊牌后，其视为对你使用【杀】"])
+				.set("choiceList", [str + "下次对你使用【杀】后，其可以视为对你使用任意普通锦囊牌", str + "下次对你使用任意普通锦囊牌后，其可以视为对你使用【杀】"])
 				.set("ai", function () {
 					const target = _status.event.player;
 					const player = _status.event.target;
@@ -4950,7 +5117,9 @@ const skills = {
 				.forResult();
 
 			player.addSkill("clanqiuxin_effect");
-			player.markAuto("clanqiuxin_effect", [[target, result.index]]);
+			if (!player.getStorage("clanqiuxin_effect").some(list => list[0] == target && list[1] == result.index)) {
+				player.markAuto("clanqiuxin_effect", [[target, result.index]]);
+			}
 		},
 		ai: {
 			order: 9,
@@ -4997,7 +5166,7 @@ const skills = {
 							if (list[1]) {
 								strx.reverse();
 							}
-							infos.add("对" + get.translation(list[0]) + "使用" + strx[0] + "后，视为对其使用" + strx[1]);
+							infos.add("<li>对" + get.translation(list[0]) + "使用" + strx[0] + "后，可以视为对其使用" + strx[1]);
 						}
 						return infos.join("<br>");
 					},
@@ -5031,7 +5200,6 @@ const skills = {
 					}
 					player.unmarkAuto("clanqiuxin_effect", matchedList);
 					const targets = matchedList.map(item => item[0]);
-
 					for (const target of targets) {
 						event.target = target;
 						const options = [];
@@ -5053,8 +5221,7 @@ const skills = {
 						}
 						const result = await player
 							.chooseButton({
-								forced: true,
-								createDialog: ["求心：视为对" + get.translation(target) + "使用一张牌", [options, "vcard"]],
+								createDialog: ["求心：你可以视为对" + get.translation(target) + "使用一张牌", [options, "vcard"]],
 							})
 							.set("ai", function (button) {
 								const player = _status.event.player;
@@ -5083,7 +5250,6 @@ const skills = {
 							});
 						}
 					}
-
 					if (!player.getStorage("clanqiuxin_effect").length) {
 						player.removeSkill("clanqiuxin_effect");
 					}
@@ -5425,22 +5591,22 @@ const skills = {
 					return 0;
 				})
 				.set("num", num)
-				//.set("logSkill", "clanxieshu")
 				.forResult();
 		},
-		//popup: false,
 		async content(event, trigger, player) {
-			await player.discard(event.cards);
+			const { cards } = event;
+			await player.discard({ cards });
 			await player.link(true);
-			if (player.getDamagedHp() > 0) {
-				await player.draw(player.getDamagedHp());
-			}
-			if (
-				game.getGlobalHistory("everything", evt => {
-					return evt.name == "dying";
-				}).length
-			) {
-				player.tempBanSkill("clanxieshu");
+			if (player.isDamaged()) {
+				const { cards } = await player.draw(player.getDamagedHp()).forResult();
+				if (
+					cards?.length &&
+					game.getGlobalHistory("everything", evt => {
+						return evt.name == "dying";
+					}).length
+				) {
+					player.tempBanSkill(event.name);
+				}
 			}
 		},
 		ai: { threaten: 3 },
@@ -6222,6 +6388,9 @@ const skills = {
 		audio: 2,
 		trigger: { player: "useCard" },
 		filter(event, player) {
+			if (player !== _status.currentPhase) {
+				return false;
+			}
 			const len = get.cardNameLength(event.card);
 			if (player.hasHistory("useCard", evt => evt != event && get.cardNameLength(evt.card) == len, event)) {
 				return false;
@@ -6287,6 +6456,9 @@ const skills = {
 		subSkill: {
 			mark: {
 				init(player, skill) {
+					if (player !== _status.currentPhase) {
+						return;
+					}
 					const list = player
 						.getHistory("useCard")
 						.map(evt => get.cardNameLength(evt.card))
@@ -6310,6 +6482,9 @@ const skills = {
 				},
 				trigger: { player: ["useCard1", "phaseAfter"] },
 				filter(event, player) {
+					if (player !== _status.currentPhase) {
+						return false;
+					}
 					if (event.name == "phase") {
 						return true;
 					}
@@ -7108,9 +7283,8 @@ const skills = {
 			let winner;
 			let cards = [];
 			let card;
-
 			result = await player
-				.chooseTarget(get.prompt("clanhuanjia"), "与一名其他角色拼点，赢的角色可以使用一张拼点牌。若此牌未造成过伤害，你获得另一张拼点牌，否则你失去一个技能", (card, player, target) => {
+				.chooseTarget(get.prompt("clanhuanjia"), "与一名其他角色拼点，赢的角色可以使用一张拼点牌。然后若此牌未造成过伤害，你获得另一张拼点牌，否则你失去一个技能", (card, player, target) => {
 					return player.canCompare(target);
 				})
 				.set("ai", target => {
@@ -7129,23 +7303,18 @@ const skills = {
 					return 0;
 				})
 				.forResult();
-
-			if (!result.bool) {
+			if (!result.bool || !result.targets?.length) {
 				return;
 			}
-
 			[target] = result.targets;
 			event.target = target;
 			player.logSkill("clanhuanjia", target);
-
 			result = await player.chooseToCompare(target).forResult();
 			if (result.tie) {
 				return;
 			}
-
 			winner = result.bool ? player : target;
 			event.winner = winner;
-
 			game.getGlobalHistory("cardMove", evt => {
 				if (evt.getParent(3) == event) {
 					cards.addArray(evt.cards.filterInD("d"));
@@ -7155,7 +7324,6 @@ const skills = {
 				return;
 			}
 			event.cards = cards;
-
 			const cardsx = cards.filter(i => get.position(i, true) == "d" && winner.hasUseTarget(i));
 			if (cardsx.length) {
 				result = await winner
@@ -7180,9 +7348,10 @@ const skills = {
 					winner.$gain2(card, false);
 					await game.delayx();
 					await winner.chooseUseTarget(true, card, false);
+				} else {
+					return;
 				}
 			}
-
 			if (
 				game.hasPlayer2(current => {
 					return current.hasHistory("sourceDamage", evt => evt.cards && evt.cards[0] == card);
@@ -8051,7 +8220,7 @@ const skills = {
 	},
 	clandaojie: {
 		audio: 2,
-		audioname: ["clan_xunshu", "clan_xunchen", "clan_xuncai", "clan_xuncan", "clan_xunyou", "clan_xunyu", "clan_xunshuang", "clan_xunshi"],
+		audioname: ["clan_xunshu", "clan_xunchen", "clan_xuncai", "clan_xuncan", "clan_xunyou", "clan_xunyu", "clan_xunshuang", "clan_xunshi", "clan_xunguan"],
 		trigger: { player: "useCardAfter" },
 		filter(event, player) {
 			return (

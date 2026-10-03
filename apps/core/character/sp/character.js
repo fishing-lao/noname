@@ -1,4 +1,10 @@
 const characters = {
+	wangai: {
+		sex: "female",
+		group: "wei",
+		hp: 4,
+		skills: ["qinmian"],
+	},
 	ol_huangfusong: {
 		sex: "male",
 		group: "qun",
@@ -966,7 +972,6 @@ const characters = {
 		hp: 3,
 		skills: ["aocai", "duwu"],
 		names: "诸葛|恪",
-		clans: ["琅琊诸葛氏"],
 		clans: ["琅琊诸葛氏"],
 	},
 	guanyinping: {
